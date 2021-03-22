@@ -26,18 +26,28 @@ func main() {
 	N := uint64(len(videoList))
 	rng := rand.New(rand.NewSource(0))
 	zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)
+	log.Println("Number of video:", N)
 	expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)
 	wg := sync.WaitGroup{}
+	portsChan := initPortsChan()
 	nreq := uint64(0)
 	for {
 		wg.Add(1)
-		go launchVideo(nreq, zipfGenerator.Uint64(), videoList, &wg)
+		go launchVideo(nreq, zipfGenerator.Uint64(), videoList, &wg, portsChan)
 		nreq++
 		secondsToWait := expGenerator.ExpFloat64()
 		log.Println("Waiting for", secondsToWait, "seconds")
-		time.Sleep(time.Duration(secondsToWait*1e6)*time.Microsecond + time.Hour) // TODO remove hour
+		time.Sleep(time.Duration(secondsToWait*1e6) * time.Microsecond) // TODO remove hour
 	}
 	wg.Wait() //nolint:govet
+}
+
+func initPortsChan() chan int {
+	ch := make(chan int, conf.MaxExposedPorts)
+	for i := 0; i < 128; i++ {
+		ch <- 9222 + i
+	}
+	return ch
 }
 
 func parseArgs() {
@@ -46,68 +56,76 @@ func parseArgs() {
 	dryMode = *dryMode2
 }
 
-func launchVideo(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.WaitGroup) {
-	log.Printf("[#%d] Reproducing video n. %d => %s", nreq, u, list[u].Id)
-	time.Sleep(time.Second * 2)
+func launchVideo(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.WaitGroup, portsChan chan int) {
+	log.Printf("[Req#%d] Reproducing video n. %d => %s", nreq, u, list[u].Id)
+	if dryMode {
+		time.Sleep(time.Second * 2)
 
-	/*opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.DisableGPU,
-		chromedp.Flag("autoplay-policy", "no-user-gesture-required"),
-	)*/
+	} else {
+		var port int
+		select {
+		case port = <-portsChan:
+			log.Printf("[Req#%d] Acquiring port %d", nreq, port)
+		default:
+			port = 0
+		}
 
-	/*allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()*/
-
-	// also set up a custom logger
-	//taskCtx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(log.Printf))
-	taskCtx, cancel := BuildHeadlessLocalChromeContext(900, true)
-	defer cancel()
-
-	// ensure that the browser process is started
-	if err := chromedp.Run(taskCtx,
-		chromedp.Navigate(getVideoUrl(list[u])),
-		/*chromedp.WaitVisible(`body > .footer-area`),
-		chromedp.Click(`#iconPlayPause`, chromedp.NodeVisible),*/
-	); err != nil {
-		panic(err)
+		taskCtx, cancel := BuildHeadlessLocalChromeContext(conf.MaxExecutionTime, true, port)
+		defer cancel()
+		if err := chromedp.Run(taskCtx,
+			chromedp.Navigate(getVideoUrl(list[u])),
+		); err != nil {
+			panic(err)
+		}
+		waitForEndOfVideo(&taskCtx, nreq)
+		if port > 0 {
+			log.Printf("[Req#%d] Releasing port %d", nreq, port)
+			portsChan <- port
+		}
 	}
-
-	waitForEndOfVideo(&taskCtx, nreq)
-	log.Printf("[#%d] End video n. %d => %s", nreq, u, list[u])
+	log.Printf("[Req#%d] End video n. %d => %s", nreq, u, list[u])
 	wg.Done()
 }
 
 func waitForEndOfVideo(ctx *context.Context, nreq uint64) {
+	pollingTick := time.Tick(10*time.Second)
 	for {
-		log.Printf("Checking browser for req. no. %d", nreq)
-		x := false
-		str := ""
-		if err := chromedp.Run(*ctx,
-			chromedp.Evaluate(`window.metricsPushed === true`, &x)); err != nil {
-			log.Println(err)
-		}
-		if err := chromedp.Run(*ctx,
-			chromedp.Evaluate(`JSON.stringify(angular.element($('[ng-controller=DashController]')).scope().metricsArray)`, &str)); err != nil {
-			log.Println(err)
-		}
-		log.Println(str)
-		if x {
-			log.Printf("Closing browser of req. no. %d...\n", nreq)
-			if err := chromedp.Cancel(*ctx); err != nil {
+		select {
+		case <-pollingTick:
+			log.Printf("[Req#%d] Checking browser", nreq)
+			x := false
+			var metricsArray []interface{}
+			if err := chromedp.Run(*ctx,
+				chromedp.Evaluate(`window.metricsPushed === true`, &x)); err != nil {
 				log.Println(err)
 			}
+			if err := chromedp.Run(*ctx,
+				chromedp.Evaluate(`angular.element($('[ng-controller=DashController]')).scope().metricsArray`,
+
+					&metricsArray)); err != nil {
+				log.Println(err)
+			}
+
+
+			log.Printf("[Req#%d] Checking browser len(metricsArray) = %d", nreq, len(metricsArray))
+			if x {
+				log.Printf("[Req#%d]Closing browser...\n", nreq)
+				if err := chromedp.Cancel(*ctx); err != nil {
+					log.Println(err)
+				}
+				return
+			}
+		case <-(*ctx).Done():
+			log.Printf("[Req#%d] Timeout for metrics push exceeded", nreq)
+			return
 		}
-		time.Sleep(time.Minute)
 	}
 }
 
 func getVideoUrl(v models.VideoMetadata) string {
-	// TODO put in conf apiUrl and feUrl
-	apiUrl := "http://video-metrics-collector.zion.alessandrodistefano.eu:8080/v1/video-reproduction"
 	mpdUrl := fmt.Sprintf("%s/vms/videos/%s", conf.ServiceUrl, v.Id)
 	// mpdUrl := "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd"
-	feUrl := "http://mora.zion.alessandrodistefano.eu:8880/samples/dash-if-reference-player-api-metrics-push/index.html"
-	url := fmt.Sprintf("%s?url=%s&autoplay=true&apiUrl=%s", feUrl, mpdUrl, apiUrl)
+	url := fmt.Sprintf("%s?url=%s&autoplay=true&apiUrl=%s", conf.ClientUrl, mpdUrl, conf.PostMetricsEndPoint)
 	log.Println("Navigating to", url)
 	return url
 }
@@ -130,7 +148,6 @@ func getVideoSlice() (videoMetadata []models.VideoMetadata) {
 	if err != nil {
 		log.Fatal("Unable to unmarshal json array", err)
 	}
-	log.Println(videoMetadata)
 	writeToFile(videoMetadata)
 	return
 }
@@ -153,9 +170,9 @@ func check(err error) {
 }
 
 // Create and return a new local context. Called by more specific constructors.
-func NewLocalContext(timeout int, debug bool, opts []chromedp.ExecAllocatorOption) (context.Context, context.CancelFunc) {
-	c, cancel_timeout := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
-	ac, cancel_alloc := chromedp.NewExecAllocator(c, opts...)
+func NewLocalContext(timeout int64, debug bool, opts []chromedp.ExecAllocatorOption) (context.Context, context.CancelFunc) {
+	c, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
+	ac, cancelAlloc := chromedp.NewExecAllocator(c, opts...)
 
 	var contextOpts = []chromedp.ContextOption{}
 	if debug {
@@ -166,12 +183,12 @@ func NewLocalContext(timeout int, debug bool, opts []chromedp.ExecAllocatorOptio
 		}
 	}
 
-	ctx, cancel_context := chromedp.NewContext(ac, contextOpts...)
+	ctx, cancelContext := chromedp.NewContext(ac, contextOpts...)
 
 	return ctx, func() {
-		cancel_timeout()
-		cancel_alloc()
-		cancel_context()
+		cancel()
+		cancelAlloc()
+		cancelContext()
 	}
 }
 
@@ -182,17 +199,22 @@ func LocalChromeDefaults() []chromedp.ExecAllocatorOption {
 		chromedp.WindowSize(3000, 2000),
 		chromedp.Flag("disable-extensions", false),
 		chromedp.Flag("disable-dev-shm-usage", "true"),
-		chromedp.Flag("remote-debugging-address", "0.0.0.0"),
-		chromedp.Flag("remote-debugging-port", "9222"), // TODO port based on nreq
 		chromedp.Flag("autoplay-policy", "no-user-gesture-required"),
 	}
 }
 
 // Construct a headless chrome context using a locally-installed chrome instance
-func BuildHeadlessLocalChromeContext(timeout int, debug bool) (context.Context, func()) {
-	return NewLocalContext(timeout, debug, append(LocalChromeDefaults(),
+func BuildHeadlessLocalChromeContext(timeout int64, debug bool, port int) (context.Context, func()) {
+	args := append(LocalChromeDefaults(),
 		chromedp.Headless,
 		chromedp.DisableGPU,
 		chromedp.NoSandbox,
-	))
+	)
+
+	if port > 0 {
+		args = append(args, chromedp.Flag("remote-debugging-address", "0.0.0.0"),
+			chromedp.Flag("remote-debugging-port", fmt.Sprintf("%d", port)))
+	}
+
+	return NewLocalContext(timeout, debug, args)
 }

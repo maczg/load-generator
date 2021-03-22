@@ -1,0 +1,6 @@
+# *[Dd]ocker*
+
+swagger
+*.tmp
+metrics-collector
+.git*
