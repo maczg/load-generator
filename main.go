@@ -44,7 +44,7 @@ func main() {
 
 func initPortsChan() chan int {
 	ch := make(chan int, conf.MaxExposedPorts)
-	for i := 0; i < 128; i++ {
+	for i := 0; int64(i)< conf.MaxExposedPorts ; i++ {
 		ch <- 9222 + i
 	}
 	return ch

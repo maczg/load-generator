@@ -15,7 +15,7 @@ var (
 	ClientUrl 			= getEnvString("CLIENT_URL",
 		"http://video-metrics-collector.zion.alessandrodistefano.eu:8880/samples/dash-if-reference-player-api-metrics-push/index.html")
 	MaxExecutionTime    = getEnvInt64("MAX_TIME_PER_REQUEST", 900)
-	MaxExposedPorts 	= getEnvInt64("MAX_EXPOSED_PORTS", 1000)
+	MaxExposedPorts 	= getEnvInt64("MAX_EXPOSED_PORTS", 128)
 )
 
 func getEnvString(key string, defaultValue string) string {
