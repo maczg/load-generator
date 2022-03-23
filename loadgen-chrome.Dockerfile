@@ -22,6 +22,7 @@ RUN go get github.com/cespare/reflex
 COPY docker/root/ /
 
 COPY go.* ./
+COPY . .
 RUN go mod download
 
 # ./ffmpeg -rtbufsize 100M -report -re -i "http://www.bok.net/dash/tears_of_steel/cleartext/stream.mpd" o.mp4

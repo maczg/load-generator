@@ -8,6 +8,7 @@ import (
 	"github.com/pborman/getopt/v2"
 	"io/ioutil"
 	"load-generator/conf"
+	"load-generator/httpreq"
 	"load-generator/models"
 	"load-generator/utils"
 	"log"
@@ -23,6 +24,7 @@ var dryMode bool
 func main() {
 	parseArgs()
 	videoList := getVideoSlice()
+
 	N := uint64(len(videoList))
 	rng := rand.New(rand.NewSource(0))
 	zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)
@@ -44,7 +46,7 @@ func main() {
 
 func initPortsChan() chan int {
 	ch := make(chan int, conf.MaxExposedPorts)
-	for i := 0; int64(i)< conf.MaxExposedPorts ; i++ {
+	for i := 0; int64(i) < conf.MaxExposedPorts; i++ {
 		ch <- 9222 + i
 	}
 	return ch
@@ -73,7 +75,7 @@ func launchVideo(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.Wa
 		taskCtx, cancel := BuildHeadlessLocalChromeContext(conf.MaxExecutionTime, true, port)
 		defer cancel()
 		if err := chromedp.Run(taskCtx,
-			chromedp.Navigate(getVideoUrl(list[u])),
+			chromedp.Navigate(httpreq.GetVideoUrl(list[u])),
 		); err != nil {
 			panic(err)
 		}
@@ -88,7 +90,7 @@ func launchVideo(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.Wa
 }
 
 func waitForEndOfVideo(ctx *context.Context, nreq uint64) {
-	pollingTick := time.Tick(10*time.Second)
+	pollingTick := time.Tick(10 * time.Second)
 	for {
 		select {
 		case <-pollingTick:
@@ -106,7 +108,6 @@ func waitForEndOfVideo(ctx *context.Context, nreq uint64) {
 				log.Println(err)
 			}
 
-
 			log.Printf("[Req#%d] Checking browser len(metricsArray) = %d", nreq, len(metricsArray))
 			if x {
 				log.Printf("[Req#%d]Closing browser...\n", nreq)
@@ -120,14 +121,6 @@ func waitForEndOfVideo(ctx *context.Context, nreq uint64) {
 			return
 		}
 	}
-}
-
-func getVideoUrl(v models.VideoMetadata) string {
-	mpdUrl := fmt.Sprintf("%s/vms/videos/%s", conf.ServiceUrl, v.Id)
-	// mpdUrl := "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd"
-	url := fmt.Sprintf("%s?url=%s&autoplay=true&apiUrl=%s", conf.ClientUrl, mpdUrl, conf.PostMetricsEndPoint)
-	log.Println("Navigating to", url)
-	return url
 }
 
 func getVideoSlice() (videoMetadata []models.VideoMetadata) {
