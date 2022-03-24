@@ -2,7 +2,7 @@ package models
 
 import (
 	"encoding/xml"
-	godashHttp "github.com/uccmisl/godash/http"
+	godashHttp "github.com/massimo-gollo/godash/http"
 )
 
 type MpdFull struct {

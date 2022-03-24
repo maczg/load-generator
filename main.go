@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/chromedp/chromedp"
+	_ "github.com/massimo-gollo/godash/player"
 	"github.com/pborman/getopt/v2"
 	"io/ioutil"
 	"load-generator/conf"
 	"load-generator/httpreq"
 	"load-generator/models"
-	"load-generator/utils"
+	"load-generator/player"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 	"sync"
@@ -24,23 +24,24 @@ var dryMode bool
 func main() {
 	parseArgs()
 	videoList := getVideoSlice()
-
 	N := uint64(len(videoList))
-	rng := rand.New(rand.NewSource(0))
-	zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)
+	/*rng := rand.New(rand.NewSource(0))*/
+	/*zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)*/
 	log.Println("Number of video:", N)
-	expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)
+	/*expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)*/
 	wg := sync.WaitGroup{}
-	portsChan := initPortsChan()
-	nreq := uint64(0)
-	for {
+	_ = initPortsChan()
+	wg.Add(1)
+	go player.Reproduction(0, 0, videoList, &wg, false)
+	/*	nreq := uint64(0)*/
+	/*	for {
 		wg.Add(1)
-		go launchVideo(nreq, zipfGenerator.Uint64(), videoList, &wg, portsChan)
+		go player.Reproduction(nreq, zipfGenerator.Uint64(), videoList, &wg, false)
 		nreq++
 		secondsToWait := expGenerator.ExpFloat64()
 		log.Println("Waiting for", secondsToWait, "seconds")
 		time.Sleep(time.Duration(secondsToWait*1e6) * time.Microsecond) // TODO remove hour
-	}
+	}*/
 	wg.Wait() //nolint:govet
 }
 
