@@ -19,8 +19,8 @@ func Reproduction(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.W
 	if dryMode {
 		time.Sleep(time.Second * 2)
 	} else {
-		urlOrign, directUrl := httpreq.GetVideoUrl(list[u])
-		_ = urlOrign
+		urlOrigin, directUrl := httpreq.GetVideoUrl(list[u])
+		_ = urlOrigin
 		//url := "http://staging.massimogollo.it/videofiles/623c8a8008e7d25d8861139c/video.mpd"
 		mpd, err := httpreq.ReadMPD(directUrl)
 		if err != nil {
