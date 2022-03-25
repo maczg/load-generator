@@ -12,7 +12,9 @@ import (
 	"load-generator/httpreq"
 	"load-generator/models"
 	"load-generator/player"
+	"load-generator/utils"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"sync"
@@ -25,23 +27,21 @@ func main() {
 	parseArgs()
 	videoList := getVideoSlice()
 	N := uint64(len(videoList))
-	/*rng := rand.New(rand.NewSource(0))*/
-	/*zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)*/
+	rng := rand.New(rand.NewSource(0))
+	zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)
 	log.Println("Number of video:", N)
-	/*expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)*/
+	expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)
 	wg := sync.WaitGroup{}
 	_ = initPortsChan()
-	wg.Add(1)
-	go player.Reproduction(0, 0, videoList, &wg, false)
-	/*	nreq := uint64(0)*/
-	/*	for {
+	nreq := uint64(0)
+	for {
 		wg.Add(1)
 		go player.Reproduction(nreq, zipfGenerator.Uint64(), videoList, &wg, false)
 		nreq++
 		secondsToWait := expGenerator.ExpFloat64()
 		log.Println("Waiting for", secondsToWait, "seconds")
 		time.Sleep(time.Duration(secondsToWait*1e6) * time.Microsecond) // TODO remove hour
-	}*/
+	}
 	wg.Wait() //nolint:govet
 }
 
@@ -75,8 +75,9 @@ func launchVideo(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.Wa
 
 		taskCtx, cancel := BuildHeadlessLocalChromeContext(conf.MaxExecutionTime, true, port)
 		defer cancel()
+		t, _ := httpreq.GetVideoUrl(list[u])
 		if err := chromedp.Run(taskCtx,
-			chromedp.Navigate(httpreq.GetVideoUrl(list[u])),
+			chromedp.Navigate(t),
 		); err != nil {
 			panic(err)
 		}

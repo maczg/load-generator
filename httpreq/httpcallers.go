@@ -11,9 +11,10 @@ import (
 	"time"
 )
 
-func GetVideoUrl(v models.VideoMetadata) string {
-	mpdUrl := fmt.Sprintf("%s/vms/videos/%s", conf.ServiceUrl, v.Id)
-	return mpdUrl
+func GetVideoUrl(v models.VideoMetadata) (string, string) {
+	originalUrl := fmt.Sprintf("%s/vms/videos/%s", conf.ServiceUrl, v.Id)
+	videofilesUrl := fmt.Sprintf("%s/videofiles/%s/video.mpd", conf.ServiceUrl, v.Id)
+	return originalUrl, videofilesUrl
 }
 
 func ReadMPD(url string) (mpd *models.MpdFull, err error) {
