@@ -9,17 +9,18 @@ import (
 	"load-generator/httpreq"
 	"load-generator/models"
 	"load-generator/utils"
+	"runtime"
 	"sync"
 	"time"
 )
 
 func Reproduction(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.WaitGroup, dryMode bool, concurrentGoroutines chan struct{}) {
 	defer utils.HandleError()
-
 	defer log.Printf("[Req#%d] End video n. %d => %s", nreq, u, list[u])
 	defer wg.Done()
+
 	concurrentGoroutines <- struct{}{}
-	log.Printf("[Req#%d] Reproducing video n. %d => %s", nreq, u, list[u].Id)
+	log.Printf("[Req#%d] Reproducing video n. %d => %s - goroutine number: %d", nreq, u, list[u].Id, runtime.NumGoroutine())
 
 	if dryMode {
 		time.Sleep(time.Second * 10)
@@ -46,10 +47,10 @@ func Reproduction(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.W
 		player.MainStream(structList, glob.DebugFile, false, "h264", glob.CodecName, 2160,
 			mpdStreamDuration*1000, 30, 2, "conventional", directUrl,
 			glob.DownloadFileStoreName, false, "off", false, "off", false,
-			false, "off", 0.0, printHeadersData, false,
+			false, "off", 0.0, printHeadersData, true,
 			false, false, false, Noden)
 
-		time.Sleep(time.Second * 2)
+		//time.Sleep(time.Second * 2)
 
 	}
 	<-concurrentGoroutines

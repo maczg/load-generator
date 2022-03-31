@@ -31,7 +31,7 @@ func main() {
 	zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)
 	log.Println("Number of video:", N)
 	//expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)
-	maxNbConcurrentGoroutines := flag.Int("maxNbConcurrentGoroutines", 10, "the number of goroutines that are allowed to run concurrently")
+	maxNbConcurrentGoroutines := flag.Int("maxNbConcurrentGoroutines", 100, "the number of goroutines that are allowed to run concurrently")
 	flag.Parse()
 	concurrentGoroutines := make(chan struct{}, *maxNbConcurrentGoroutines)
 	wg := sync.WaitGroup{}

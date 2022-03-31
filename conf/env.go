@@ -6,7 +6,8 @@ import (
 )
 
 var (
-	ServiceUrl          = getEnvString("SERVICE_URL", "http://cloud-vms-1.minikube")
+	ServiceUrl = getEnvString("SERVICE_URL", "http://cloud.massimogollo.it")
+	//ServiceUrl          = getEnvString("SERVICE_URL", "http://cloud-vms-1.minikube")
 	ZipfS               = getEnvFloat64("ZIPF_S", 1.01)
 	ZipfV               = getEnvFloat64("ZIPF_V", 1)
 	ExpLambda           = getEnvFloat64("EXP_AVG", 0.1) // Average requests per second
