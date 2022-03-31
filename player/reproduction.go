@@ -13,16 +13,21 @@ import (
 	"time"
 )
 
-func Reproduction(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.WaitGroup, dryMode bool) {
+func Reproduction(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.WaitGroup, dryMode bool, concurrentGoroutines chan struct{}) {
 	defer utils.HandleError()
+
+	defer log.Printf("[Req#%d] End video n. %d => %s", nreq, u, list[u])
+	defer wg.Done()
+	concurrentGoroutines <- struct{}{}
 	log.Printf("[Req#%d] Reproducing video n. %d => %s", nreq, u, list[u].Id)
+
 	if dryMode {
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Second * 10)
 	} else {
-		urlOrigin, directUrl := httpreq.GetVideoUrl(list[u])
-		_ = urlOrigin
+		originalUrl, directUrl := httpreq.GetVideoUrl(list[u])
+
 		//url := "http://staging.massimogollo.it/videofiles/623c8a8008e7d25d8861139c/video.mpd"
-		mpd, err := httpreq.ReadMPD(directUrl)
+		mpd, err := httpreq.ReadMPD(originalUrl)
 		if err != nil {
 			return
 		}
@@ -41,12 +46,11 @@ func Reproduction(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.W
 		player.MainStream(structList, glob.DebugFile, false, "h264", glob.CodecName, 2160,
 			mpdStreamDuration*1000, 30, 2, "conventional", directUrl,
 			glob.DownloadFileStoreName, false, "off", false, "off", false,
-			false, "off", 0.0, printHeadersData, true,
+			false, "off", 0.0, printHeadersData, false,
 			false, false, false, Noden)
 
-		/*	time.Sleep(time.Second * time.Duration(mpdStreamDuration))*/
-	}
+		time.Sleep(time.Second * 2)
 
-	log.Printf("[Req#%d] End video n. %d => %s", nreq, u, list[u])
-	wg.Done()
+	}
+	<-concurrentGoroutines
 }

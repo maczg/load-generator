@@ -6,16 +6,16 @@ import (
 )
 
 var (
-	ServiceUrl          = getEnvString("SERVICE_URL", "http://staging.massimogollo.it")
+	ServiceUrl          = getEnvString("SERVICE_URL", "http://cloud-vms-1.minikube")
 	ZipfS               = getEnvFloat64("ZIPF_S", 1.01)
 	ZipfV               = getEnvFloat64("ZIPF_V", 1)
 	ExpLambda           = getEnvFloat64("EXP_AVG", 0.1) // Average requests per second
 	PostMetricsEndPoint = getEnvString("POST_METRICS_ENDPOINT",
 		"http://video-metrics-collector.zion.alessandrodistefano.eu:8080/v1/video-reproduction")
-	ClientUrl 			= getEnvString("CLIENT_URL",
+	ClientUrl = getEnvString("CLIENT_URL",
 		"http://video-metrics-collector.zion.alessandrodistefano.eu:8880/samples/dash-if-reference-player-api-metrics-push/index.html")
-	MaxExecutionTime    = getEnvInt64("MAX_TIME_PER_REQUEST", 900)
-	MaxExposedPorts 	= getEnvInt64("MAX_EXPOSED_PORTS", 128)
+	MaxExecutionTime = getEnvInt64("MAX_TIME_PER_REQUEST", 900)
+	MaxExposedPorts  = getEnvInt64("MAX_EXPOSED_PORTS", 128)
 )
 
 func getEnvString(key string, defaultValue string) string {
