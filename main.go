@@ -14,6 +14,7 @@ import (
 	"load-generator/httpreq"
 	"load-generator/models"
 	"load-generator/player"
+	"load-generator/utils"
 	"math/rand"
 	"net/http"
 	"os"
@@ -30,8 +31,8 @@ func main() {
 	rng := rand.New(rand.NewSource(0))
 	zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)
 	log.Println("Number of video:", N)
-	//expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)
-	maxNbConcurrentGoroutines := flag.Int("maxNbConcurrentGoroutines", 100, "the number of goroutines that are allowed to run concurrently")
+	expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)
+	maxNbConcurrentGoroutines := flag.Int("maxNbConcurrentGoroutines", 300, "the number of goroutines that are allowed to run concurrently")
 	flag.Parse()
 	concurrentGoroutines := make(chan struct{}, *maxNbConcurrentGoroutines)
 	wg := sync.WaitGroup{}
@@ -41,11 +42,12 @@ func main() {
 		wg.Add(1)
 		go player.Reproduction(nreq, zipfGenerator.Uint64(), videoList, &wg, false, concurrentGoroutines)
 		nreq++
-		//secondsToWait := expGenerator.ExpFloat64()
-		//log.Println("Waiting for", secondsToWait, "seconds")
+		secondsToWait := expGenerator.ExpFloat64()
+		log.Println("Waiting for", secondsToWait, "seconds")
 		//time.Sleep(time.Duration(secondsToWait*1e6) * time.Microsecond) // TODO remove hour
 
 		time.Sleep(time.Millisecond * 100)
+		//time.Sleep(time.Duration(secondsToWait*1e6) * time.Microsecond)
 	}
 	wg.Wait() //nolint:govet
 }
