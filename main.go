@@ -32,7 +32,7 @@ func main() {
 	zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)
 	log.Println("Number of video:", N)
 	expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)
-	maxNbConcurrentGoroutines := flag.Int("maxNbConcurrentGoroutines", 300, "the number of goroutines that are allowed to run concurrently")
+	maxNbConcurrentGoroutines := flag.Int("m", 500, "the number of goroutines that are allowed to run concurrently")
 	flag.Parse()
 	concurrentGoroutines := make(chan struct{}, *maxNbConcurrentGoroutines)
 	wg := sync.WaitGroup{}
@@ -42,8 +42,8 @@ func main() {
 		wg.Add(1)
 		go player.Reproduction(nreq, zipfGenerator.Uint64(), videoList, &wg, false, concurrentGoroutines)
 		nreq++
-		secondsToWait := expGenerator.ExpFloat64()
-		log.Println("Waiting for", secondsToWait, "seconds")
+		_ = expGenerator.ExpFloat64()
+		//log.Println("Waiting for", secondsToWait, "seconds")
 		//time.Sleep(time.Duration(secondsToWait*1e6) * time.Microsecond) // TODO remove hour
 
 		time.Sleep(time.Millisecond * 100)

@@ -47,11 +47,12 @@ func Reproduction(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.W
 		//TODO codec hardcoded h264
 		ts := time.Now().Unix()
 		debugLoc := fmt.Sprintf("./logs/repr_%d", ts)
+		//dwnLoc := fmt.Sprintf("./files_%d",)
 		player.MainStream(structList, debugLoc, false, "h264", glob.CodecName, 2160,
 			mpdStreamDuration*1000, 30, 2, "conventional", directUrl,
 			glob.DownloadFileStoreName, false, "off", false, "off", false,
 			false, "off", 0.0, printHeadersData, false,
-			false, false, false, Noden)
+			false, false, false, Noden, nreq)
 
 		//time.Sleep(time.Second * 2)
 
