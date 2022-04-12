@@ -1,61 +1,46 @@
 package player
 
 import (
-	"fmt"
-	"github.com/massimo-gollo/godash/P2Pconsul"
-	glob "github.com/massimo-gollo/godash/global"
-	"github.com/massimo-gollo/godash/http"
-	"github.com/massimo-gollo/godash/player"
+	metrics "github.com/massimo-gollo/DASHpher/models"
+	"github.com/massimo-gollo/DASHpher/reproduction"
 	log "github.com/sirupsen/logrus"
-	"load-generator/httpreq"
 	"load-generator/models"
 	"load-generator/utils"
-	"runtime"
 	"sync"
 	"time"
 )
 
-func Reproduction(nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.WaitGroup, dryMode bool, concurrentGoroutines chan struct{}) {
+func Play(counter *utils.Counter, metric *metrics.ReproductionMetrics, nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.WaitGroup, dryMode bool, concurrentGoroutines chan struct{}) {
 	defer utils.HandleError()
-	defer log.Printf("[Req#%d] End video n. %d => %s", nreq, u, list[u])
 	defer wg.Done()
-
-	concurrentGoroutines <- struct{}{}
-	log.Printf("[Req#%d] Reproducing video n. %d => %s - goroutine number: %d", nreq, u, list[u].Id, runtime.NumGoroutine())
-
+	//log.Printf("[Req#%d] Reproducing video n. %d => %s - goroutine number: %d - startTime %s", nreq, u, list[u].Id, runtime.NumGoroutine(), st.Format("2006-01-02 15:04:05"))
+	st := time.Now()
+	_ = st
+	counter.Inc("total")
+	counter.Inc("active")
+	duration := utils.GetRandomDurationBetween(4, 240)
 	if dryMode {
 		time.Sleep(time.Second * 10)
 	} else {
-		originalUrl, directUrl := httpreq.GetVideoUrl(list[u])
-
-		//url := "http://staging.massimogollo.it/videofiles/623c8a8008e7d25d8861139c/video.mpd"
-		mpd, err := httpreq.ReadMPD(originalUrl)
+		_, directUrl := utils.GetVideoUrl(list[u])
+		metric.ContentUrl = directUrl
+		metric.ReproductionID = nreq
+		//log.Infof("randomized duration %ds", duration)
+		err := reproduction.Stream(metric, "h264", "conventional", 1080, duration, 2, 5, nreq)
 		if err != nil {
-			return
+			log.Errorf("Error: %s", err.Error())
 		}
-
-		//structlist with only one mpd
-		structList := []http.MPD{*mpd.Mpd}
-		maxSegments, segmentDurationArray := http.GetSegmentDetails(structList, 0)
-		segmentDuration := segmentDurationArray[0]
-		lastSegmentDuration := http.SplitMPDSegmentDuration(structList[0].MaxSegmentDuration)
-		mpdStreamDuration := segmentDuration*(maxSegments-1) + lastSegmentDuration
-
-		var printHeadersData map[string]string
-
-		var Noden = P2Pconsul.NodeUrl{}
-		//TODO codec hardcoded h264
-		ts := time.Now().Unix()
-		debugLoc := fmt.Sprintf("./logs/repr_%d", ts)
-		//dwnLoc := fmt.Sprintf("./files_%d",)
-		player.MainStream(structList, debugLoc, false, "h264", glob.CodecName, 2160,
-			mpdStreamDuration*1000, 30, 2, "conventional", directUrl,
-			glob.DownloadFileStoreName, false, "off", false, "off", false,
-			false, "off", 0.0, printHeadersData, false,
-			false, false, false, Noden, nreq)
-
-		//time.Sleep(time.Second * 2)
-
+		switch metric.Status {
+		case metrics.Aborted:
+			counter.Inc("error")
+		case metrics.Error:
+			counter.Inc("witherror")
+		default:
+			counter.Inc("success")
+		}
 	}
+	counter.Dec("active")
 	<-concurrentGoroutines
+	defer log.Printf("[Req#%d] End video n. %d => %s - endTime %s duration: %s - Video legth: %d", nreq, u, list[u].Id, time.Now().Format("2006-01-02 15:04:05"),
+		time.Since(st).String(), time.Duration(duration))
 }
