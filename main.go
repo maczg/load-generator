@@ -23,6 +23,7 @@ import (
 
 var dryMode bool
 var maxReq int
+var targeturl string
 
 var counter *utils.Counter
 
@@ -40,6 +41,7 @@ func main() {
 	counter.AddTo("total", 0)
 	//total request in queue
 	counter.AddTo("active", 0)
+	counter.AddTo("stalls", 0)
 
 	parseArgs()
 	videoList := getVideoSlice()
@@ -53,21 +55,21 @@ func main() {
 	wg := sync.WaitGroup{}
 	nreq := uint64(0)
 	requestsMetrics := make(map[uint64]*metrics.ReproductionMetrics)
-	log.Infof("start in %d second", 10)
-	time.Sleep(10 * time.Second)
+	log.Infof("start in %d second", 5)
+	time.Sleep(5 * time.Second)
 
 	stSim := time.Now()
 	SetupCloseHandler(&stSim)
-	log.Infof("Start time simulation: %s", stSim.Format("2006-01-02 15:04:05"))
+	log.Infof("Start simulation at %s - target url %s", stSim.Format("15:04:05"), targeturl)
 
-	go UpdateStatus(&nreq)
+	go UpdateStatus(&nreq, &stSim)
 
 	for {
 		//test. Lock here in order of not waste for cicle ?? unlock inside goroutine
 		goroutineBuffer <- struct{}{}
 		requestsMetrics[nreq] = metrics.NewReproductionMetrics()
 		wg.Add(1)
-		go player.Play(counter, requestsMetrics[nreq], nreq, zipfGenerator.Uint64(), videoList, &wg, false, goroutineBuffer)
+		go player.Play(targeturl, counter, requestsMetrics[nreq], nreq, zipfGenerator.Uint64(), videoList, &wg, false, goroutineBuffer)
 		nreq++
 		secondsToWait := expGenerator.ExpFloat64()
 		//log.Println("Waiting for", time.Duration(secondsToWait*1e6), "seconds")
@@ -91,24 +93,37 @@ func SetupCloseHandler(st *time.Time) {
 func parseArgs() {
 	dryMode2 := getopt.BoolLong("dry-run", 't', "Launch the client in dry run mode (no actual video is retrieved)")
 	concurrent := getopt.IntLong("max-req", 'c', 10, "Specify max Number of concurrent request - (max goroutine in execution)")
+	url := getopt.String('u', "http://cloud.gollo1.particles.dieei.unict.it", "target url")
 	getopt.Parse()
 	dryMode = *dryMode2
 	maxReq = *concurrent
+	targeturl = *url
 }
 
-func UpdateStatus(nreq *uint64) {
-	pollingTick := time.Tick(10 * time.Second)
+func UpdateStatus(nreq *uint64, t *time.Time) {
+	pollingTick := time.Tick(20 * time.Second)
 	for {
 		select {
 		case <-pollingTick:
-			log.Infof("Total Request: %d - Current Active: %d - CompleteWithFail: %d Completed: %d", counter.GetRequestWith("total"), counter.GetRequestWith("active"),
-				counter.GetRequestWith("error"), counter.GetRequestWith("success"))
+			total := counter.GetRequestWith("total")
+			witherr := counter.GetRequestWith("witherror")
+			aborter := counter.GetRequestWith("aborted")
+			succeded := counter.GetRequestWith("success")
+			active := counter.GetRequestWith("active")
+			stalls := counter.GetRequestWith("stalls")
+			log.Infof("init at: %s | duration: %s | Active: %d/%d | Success %d/%d | Finish with error: %d/%d | Aborted: %d/%d | Stalls %d",
+				t.Format("15:04:05"),
+				time.Since(*t).Truncate(time.Second).String(),
+				active, maxReq,
+				succeded, total,
+				witherr, total,
+				aborter, total, stalls)
 		}
 	}
 }
 
 func getVideoSlice() (videoMetadata []models.VideoMetadata) {
-	resp, err := http.Get(fmt.Sprintf("%s/vms/videos", conf.ServiceUrl))
+	resp, err := http.Get(fmt.Sprintf("%s/vms/videos", targeturl))
 	if err != nil {
 		log.Fatal("Unable to get videos from the server: ", err)
 	}

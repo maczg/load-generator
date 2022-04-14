@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	ServiceUrl          = getEnvString("SERVICE_URL", "http://cloud.gollo1.particles.dieei.unict.it")
+	ServiceUrl          = getEnvString("SERVICE_URL", "http://edge.gollo1.particles.dieei.unict.it")
 	ZipfS               = getEnvFloat64("ZIPF_S", 1.01)
 	ZipfV               = getEnvFloat64("ZIPF_V", 1)
 	ExpLambda           = getEnvFloat64("EXP_AVG", 0.1) // Average requests per second

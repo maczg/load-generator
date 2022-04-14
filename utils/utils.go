@@ -3,7 +3,6 @@ package utils
 import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"load-generator/conf"
 	"load-generator/models"
 	"math/rand"
 	"runtime/debug"
@@ -25,9 +24,9 @@ func GetRandomDurationBetween(min, max int) int {
 	return (min + rng.Intn(max-min+1)) * 1e3
 }
 
-func GetVideoUrl(v models.VideoMetadata) (string, string) {
-	originalUrl := fmt.Sprintf("%s/vms/videos/%s", conf.ServiceUrl, v.Id)
-	videofilesUrl := fmt.Sprintf("%s/videofiles/%s/video.mpd", conf.ServiceUrl, v.Id)
+func GetVideoUrl(url string, v models.VideoMetadata) (string, string) {
+	originalUrl := fmt.Sprintf("%s/vms/videos/%s", url, v.Id)
+	videofilesUrl := fmt.Sprintf("%s/videofiles/%s/video.mpd", url, v.Id)
 	return originalUrl, videofilesUrl
 }
 
