@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	metrics "github.com/massimo-gollo/DASHpher/models"
-	_ "github.com/massimo-gollo/godash/player"
 	"github.com/pborman/getopt/v2"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -24,6 +23,7 @@ import (
 var dryMode bool
 var maxReq int
 var targeturl string
+var simMaxDuration int
 
 var counter *utils.Counter
 
@@ -74,6 +74,10 @@ func main() {
 		secondsToWait := expGenerator.ExpFloat64()
 		//log.Println("Waiting for", time.Duration(secondsToWait*1e6), "seconds")
 		time.Sleep(time.Duration(secondsToWait * 1e6))
+		//stop duration if sim = 2 min
+		if int(time.Since(stSim).Minutes()) >= simMaxDuration {
+			syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+		}
 	}
 
 	wg.Wait() //nolint:govet
@@ -93,11 +97,13 @@ func SetupCloseHandler(st *time.Time) {
 func parseArgs() {
 	dryMode2 := getopt.BoolLong("dry-run", 't', "Launch the client in dry run mode (no actual video is retrieved)")
 	concurrent := getopt.IntLong("max-req", 'c', 10, "Specify max Number of concurrent request - (max goroutine in execution)")
+	duration := getopt.IntLong("max-duration", 'd', 30, "Specify max duration of simulation")
 	url := getopt.String('u', "http://cloud.gollo1.particles.dieei.unict.it", "target url")
 	getopt.Parse()
 	dryMode = *dryMode2
 	maxReq = *concurrent
 	targeturl = *url
+	simMaxDuration = *duration
 }
 
 func UpdateStatus(nreq *uint64, t *time.Time) {

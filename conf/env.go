@@ -6,14 +6,10 @@ import (
 )
 
 var (
-	ServiceUrl          = getEnvString("SERVICE_URL", "http://edge.gollo1.particles.dieei.unict.it")
-	ZipfS               = getEnvFloat64("ZIPF_S", 1.01)
-	ZipfV               = getEnvFloat64("ZIPF_V", 1)
-	ExpLambda           = getEnvFloat64("EXP_AVG", 0.1) // Average requests per second
-	PostMetricsEndPoint = getEnvString("POST_METRICS_ENDPOINT",
-		"http://video-metrics-collector.zion.alessandrodistefano.eu:8080/v1/video-reproduction")
-	ClientUrl = getEnvString("CLIENT_URL",
-		"http://video-metrics-collector.zion.alessandrodistefano.eu:8880/samples/dash-if-reference-player-api-metrics-push/index.html")
+	ServiceUrl       = getEnvString("SERVICE_URL", "http://edge.gollo2.particles.dieei.unict.it")
+	ZipfS            = getEnvFloat64("ZIPF_S", 1.01)
+	ZipfV            = getEnvFloat64("ZIPF_V", 1)
+	ExpLambda        = getEnvFloat64("EXP_AVG", 0.1) // Average requests per second
 	MaxExecutionTime = getEnvInt64("MAX_TIME_PER_REQUEST", 900)
 	MaxExposedPorts  = getEnvInt64("MAX_EXPOSED_PORTS", 128)
 )

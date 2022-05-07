@@ -26,7 +26,7 @@ func Play(target string, counter *utils.Counter, metric *metrics.ReproductionMet
 		metric.ContentUrl = original
 		metric.ReproductionID = nreq
 		//log.Infof("randomized duration %ds", duration)
-		err := reproduction.Stream(metric, "h264", "conventional", 1080, 240000, 2, 5, nreq)
+		err := reproduction.Stream(metric, "h264", "conventional", 1080, 240000, 2, 10, nreq)
 		if err != nil {
 			log.Errorf("Error: %s", err.Error())
 		}
