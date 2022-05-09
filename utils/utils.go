@@ -3,10 +3,13 @@ package utils
 import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"load-generator/models"
+	"load-generator/resource"
 	"math/rand"
+	"os"
+	"os/signal"
 	"runtime/debug"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -17,6 +20,16 @@ func HandleError() {
 	}
 }
 
+func SetupCloseHandler(st *time.Time) {
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		log.Infof("Sim duration: %s", time.Since(*st))
+		os.Exit(0)
+	}()
+}
+
 //GetRandomDurationBetween return random duration between max and min. min must be at least segment size duration in seconds
 func GetRandomDurationBetween(min, max int) int {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -24,7 +37,7 @@ func GetRandomDurationBetween(min, max int) int {
 	return (min + rng.Intn(max-min+1)) * 1e3
 }
 
-func GetVideoUrl(url string, v models.VideoMetadata) (string, string) {
+func GetVideoUrl(url string, v resource.VideoMetadata) (string, string) {
 	originalUrl := fmt.Sprintf("%s/vms/videos/%s", url, v.Id)
 	videofilesUrl := fmt.Sprintf("%s/videofiles/%s/video.mpd", url, v.Id)
 	return originalUrl, videofilesUrl

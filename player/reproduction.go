@@ -3,45 +3,61 @@ package player
 import (
 	metrics "github.com/massimo-gollo/DASHpher/models"
 	"github.com/massimo-gollo/DASHpher/reproduction"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
-	"load-generator/models"
+	"load-generator/resource"
 	"load-generator/utils"
+	"strconv"
 	"sync"
 	"time"
 )
 
-func Play(target string, counter *utils.Counter, metric *metrics.ReproductionMetrics, nreq uint64, u uint64, list []models.VideoMetadata, wg *sync.WaitGroup, dryMode bool, concurrentGoroutines chan struct{}) {
+var (
+	Req = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "total_reproduction",
+		Help: "total_reproduction_with_status",
+	}, []string{"experiment", "loadcurve", "variant", "status"})
+
+	TotalByteRcv = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "total_byte_rcv",
+		Help: "total byte rcv from target"},
+		[]string{"experiment", "loadcurve", "variant"})
+
+	ResponseTime = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "response_time_request",
+		Help: "response_time_of_request"},
+		[]string{"experiment", "loadcurve", "variant", "request"})
+)
+
+func Play(expInfo resource.ExperimentInfo, nr uint64, u uint64, list []resource.VideoMetadata, w *sync.WaitGroup, sem chan struct{}) {
 	defer utils.HandleError()
-	defer wg.Done()
-	//log.Printf("[Req#%d] Reproducing video n. %d => %s - goroutine number: %d - startTime %s", nreq, u, list[u].Id, runtime.NumGoroutine(), st.Format("2006-01-02 15:04:05"))
-	st := time.Now()
-	_ = st
-	counter.Inc("total")
-	counter.Inc("active")
-	//duration := utils.GetRandomDurationBetween(4, 240)
-	if dryMode {
+	defer w.Done()
+	defer log.Printf("[Req#%d] End video n. %d => %s", nr, u, list[u].Id)
+	log.Printf("[Req#%d] Reproducing video n. %d => %s", nr, u, list[u].Id)
+	Req.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant, "total").Inc()
+	Req.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant, "active").Inc()
+	metric := metrics.NewReproductionMetrics()
+	if expInfo.DryRun {
 		time.Sleep(time.Second * 10)
 	} else {
-		original, _ := utils.GetVideoUrl(target, list[u])
+		original, _ := utils.GetVideoUrl(expInfo.ServiceUrl, list[u])
 		metric.ContentUrl = original
-		metric.ReproductionID = nreq
-		//log.Infof("randomized duration %ds", duration)
-		err := reproduction.Stream(metric, "h264", "conventional", 1080, 240000, 2, 10, nreq)
-		if err != nil {
-			log.Errorf("Error: %s", err.Error())
-		}
+		metric.ReproductionID = nr
+		_ = reproduction.Stream(metric, "h264", "conventional", 1080, 60000, 2, 10, nr)
 		switch metric.Status {
 		case metrics.Aborted:
-			counter.Inc("aborted")
+			Req.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant, "aborted").Inc()
 		case metrics.Error:
-			counter.Inc("witherror")
+			ResponseTime.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant, strconv.Itoa(int(nr))).Add(metric.FetchMpdInfo.RTT2FirstByte.Minutes())
+			Req.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant, "error").Inc()
+			TotalByteRcv.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant).Add(float64(metric.TotalByteDownloaded))
 		default:
-			counter.AddTo("stalls", metric.StallCount)
-			counter.Inc("success")
+			ResponseTime.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant, strconv.Itoa(int(nr))).Add(metric.FetchMpdInfo.RTT2FirstByte.Minutes())
+			TotalByteRcv.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant).Add(float64(metric.TotalByteDownloaded))
+			Req.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant, "success").Inc()
 		}
 	}
-	counter.Dec("active")
-	<-concurrentGoroutines
-	//defer log.Printf("[Req#%d] End video n. %d => %s - endTime %s duration: %s - Video legth: %d", nreq, u, list[u].Id, time.Now().Format("2006-01-02 15:04:05"),
-	//	time.Since(st).String(), time.Duration(duration))
+	Req.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant, "active").Dec()
+	<-sem
 }

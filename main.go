@@ -3,133 +3,86 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	metrics "github.com/massimo-gollo/DASHpher/models"
-	"github.com/pborman/getopt/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/alecthomas/kingpin.v2"
 	"io/ioutil"
-	"load-generator/conf"
-	"load-generator/models"
 	"load-generator/player"
+	"load-generator/resource"
 	"load-generator/utils"
 	"math/rand"
 	"net/http"
-	"os"
-	"os/signal"
+	"strconv"
 	"sync"
-	"syscall"
 	"time"
 )
 
-var dryMode bool
-var maxReq int
-var targeturl string
-var simMaxDuration int
+var (
+	dryMode             = kingpin.Flag("dry-run", "dry-run mode").Default("false").Short('D').Envar("DRYRUN").Bool()
+	maxReq              = kingpin.Flag("maxreq", "max concurrent goroutine").Default("10").Short('m').Envar("MAX_REQUESTS").Int()
+	serviceUrl          = kingpin.Flag("service", "target url of load generation").Default("http://cloud.gollo1.particles.dieei.unict.it").Short('s').Envar("SERVICE_URL").String()
+	zipfS               = kingpin.Flag("zipfs", "param S of zipf func").Default("1.01").Short('S').Envar("ZIPFS").Float()
+	zipfV               = kingpin.Flag("zipfv", "param V of zipf func").Default("1").Short('V').Envar("ZIPFV").Float()
+	expLambda           = kingpin.Flag("explambda", "param exponentialm distribution").Default("0.1").Short('e').Envar("EXP_LAMBDA").Float()
+	simDuration         = kingpin.Flag("duration", "duration of simulation").Default("30m").Short('d').Envar("SIM_DURATION").Duration()
+	lc                  = kingpin.Flag("lc", "load-cure [00|01|02|03]").Default("00").Short('l').String()
+	variant             = kingpin.Flag("variant", "variant [CO|ECO1|ECO2]").Default("CO").Short('v').String()
+	experiment          = strconv.Itoa(int(time.Now().UnixNano()))
+	startTimeSimulation = time.Now()
+)
 
-var counter *utils.Counter
+func init() {
+	prometheus.Register(player.TotalByteRcv)
+	prometheus.Register(player.Req)
+}
 
 func main() {
-
-	counter = utils.NewCounter()
-	//prepare counter - just to know counter values
-	//success - complete without error in segment
-	counter.AddTo("success", 0)
-	//aborted - some reason not downloaded all segment
-	counter.AddTo("aborted", 0)
-	//completed but dropped some segment
-	counter.AddTo("witherror", 0)
-	//total request made
-	counter.AddTo("total", 0)
-	//total request in queue
-	counter.AddTo("active", 0)
-	counter.AddTo("stalls", 0)
-
-	parseArgs()
+	kingpin.Parse()
+	info := parseExpInfo()
 	videoList := getVideoSlice()
+	utils.SetupCloseHandler(&startTimeSimulation)
+
 	N := uint64(len(videoList))
 	rng := rand.New(rand.NewSource(0))
-	zipfGenerator := rand.NewZipf(rng, conf.ZipfS, conf.ZipfV, N-1)
-	log.Infoln("Number of video:", N)
-	log.Infof("Max concurrent request %d (default %d)", maxReq, 10)
-	expGenerator := utils.NewExponentialDistribution(rng, conf.ExpLambda)
-	goroutineBuffer := make(chan struct{}, maxReq)
+	zipfGenerator := rand.NewZipf(rng, *zipfS, *zipfV, N-1)
+	expGenerator := utils.NewExponentialDistribution(rng, *expLambda)
+
+	requestSem := make(chan struct{}, *maxReq)
 	wg := sync.WaitGroup{}
 	nreq := uint64(0)
-	requestsMetrics := make(map[uint64]*metrics.ReproductionMetrics)
-	log.Infof("start in %d second", 5)
-	time.Sleep(5 * time.Second)
 
-	stSim := time.Now()
-	SetupCloseHandler(&stSim)
-	log.Infof("Start simulation at %s - target url %s", stSim.Format("15:04:05"), targeturl)
-
-	go UpdateStatus(&nreq, &stSim)
+	wg.Add(1)
+	go setupPromServer()
 
 	for {
 		//test. Lock here in order of not waste for cicle ?? unlock inside goroutine
-		goroutineBuffer <- struct{}{}
-		requestsMetrics[nreq] = metrics.NewReproductionMetrics()
+		requestSem <- struct{}{}
+
 		wg.Add(1)
-		go player.Play(targeturl, counter, requestsMetrics[nreq], nreq, zipfGenerator.Uint64(), videoList, &wg, false, goroutineBuffer)
-		nreq++
+		go player.Play(info, nreq, zipfGenerator.Uint64(), videoList, &wg, requestSem)
+
 		secondsToWait := expGenerator.ExpFloat64()
-		//log.Println("Waiting for", time.Duration(secondsToWait*1e6), "seconds")
 		time.Sleep(time.Duration(secondsToWait * 1e6))
-		//stop duration if sim = 2 min
-		if int(time.Since(stSim).Minutes()) >= simMaxDuration {
-			syscall.Kill(syscall.Getpid(), syscall.SIGINT)
-		}
+		nreq++
 	}
 
 	wg.Wait() //nolint:govet
 
 }
 
-func SetupCloseHandler(st *time.Time) {
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		log.Infof("Sim duration: %s", time.Since(*st))
-		os.Exit(0)
-	}()
-}
-
-func parseArgs() {
-	dryMode2 := getopt.BoolLong("dry-run", 't', "Launch the client in dry run mode (no actual video is retrieved)")
-	concurrent := getopt.IntLong("max-req", 'c', 10, "Specify max Number of concurrent request - (max goroutine in execution)")
-	duration := getopt.IntLong("max-duration", 'd', 30, "Specify max duration of simulation")
-	url := getopt.String('u', "http://cloud.gollo1.particles.dieei.unict.it", "target url")
-	getopt.Parse()
-	dryMode = *dryMode2
-	maxReq = *concurrent
-	targeturl = *url
-	simMaxDuration = *duration
-}
-
-func UpdateStatus(nreq *uint64, t *time.Time) {
-	pollingTick := time.Tick(20 * time.Second)
-	for {
-		select {
-		case <-pollingTick:
-			total := counter.GetRequestWith("total")
-			witherr := counter.GetRequestWith("witherror")
-			aborter := counter.GetRequestWith("aborted")
-			succeded := counter.GetRequestWith("success")
-			active := counter.GetRequestWith("active")
-			stalls := counter.GetRequestWith("stalls")
-			log.Infof("init at: %s | duration: %s | Active: %d/%d | Success %d/%d | Finish with error: %d/%d | Aborted: %d/%d | Stalls %d",
-				t.Format("15:04:05"),
-				time.Since(*t).Truncate(time.Second).String(),
-				active, maxReq,
-				succeded, total,
-				witherr, total,
-				aborter, total, stalls)
-		}
+func parseExpInfo() resource.ExperimentInfo {
+	return resource.ExperimentInfo{
+		Experiment: experiment,
+		Variant:    *variant,
+		LoadCurve:  *lc,
+		DryRun:     *dryMode,
+		ServiceUrl: *serviceUrl,
 	}
 }
 
-func getVideoSlice() (videoMetadata []models.VideoMetadata) {
-	resp, err := http.Get(fmt.Sprintf("%s/vms/videos", targeturl))
+func getVideoSlice() (videoMetadata []resource.VideoMetadata) {
+	resp, err := http.Get(fmt.Sprintf("%s/vms/videos", *serviceUrl))
 	if err != nil {
 		log.Fatal("Unable to get videos from the server: ", err)
 	}
@@ -146,23 +99,10 @@ func getVideoSlice() (videoMetadata []models.VideoMetadata) {
 	if err != nil {
 		log.Fatal("Unable to unmarshal json array", err)
 	}
-	writeToFile(videoMetadata)
 	return
 }
 
-func writeToFile(metadata []models.VideoMetadata) {
-	f, err := os.Create("/tmp/dat2")
-	check(err)
-	defer f.Close()
-	for _, m := range metadata {
-		_, err = f.WriteString(fmt.Sprintf("%s\n", m.Id))
-		check(err)
-	}
-	check(f.Sync())
-}
-
-func check(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
+func setupPromServer() {
+	http.Handle("/metrics", promhttp.Handler())
+	http.ListenAndServe(":2112", nil)
 }
