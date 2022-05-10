@@ -44,7 +44,7 @@ func Play(expInfo resource.ExperimentInfo, nr uint64, u uint64, list []resource.
 		original, _ := utils.GetVideoUrl(expInfo.ServiceUrl, list[u])
 		metric.ContentUrl = original
 		metric.ReproductionID = nr
-		_ = reproduction.Stream(metric, "h264", "conventional", 1080, 60000, 2, 10, nr)
+		_ = reproduction.Stream(metric, "h264", "conventional", 1080, 240000, 2, 10, nr)
 		switch metric.Status {
 		case metrics.Aborted:
 			Req.WithLabelValues(expInfo.Experiment, expInfo.LoadCurve, expInfo.Variant, "aborted").Inc()

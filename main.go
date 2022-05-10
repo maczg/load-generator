@@ -58,10 +58,8 @@ func main() {
 	for {
 		//test. Lock here in order of not waste for cicle ?? unlock inside goroutine
 		requestSem <- struct{}{}
-
 		wg.Add(1)
 		go player.Play(info, nreq, zipfGenerator.Uint64(), videoList, &wg, requestSem)
-
 		secondsToWait := expGenerator.ExpFloat64()
 		time.Sleep(time.Duration(secondsToWait * 1e6))
 		nreq++
